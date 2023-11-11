@@ -22,12 +22,12 @@ public class GithubUserReposTests {
     private static final int UNPROCESSABLE_CONTENT = 422;
     private static final String REQUEST_PATH = "/user/repos";
 
-    private static String uuid = generateGUID();
+    private static String uuid;
 
     @BeforeAll
     public static void setup() {
         RestAssured.baseURI = "https://api.github.com";
-
+        uuid = generateGUID();
     }
 
     @Test
@@ -67,7 +67,7 @@ public class GithubUserReposTests {
     private Response getResponse(Map bodyParams, String requestPath) {
 
         return given()
-                .header("Authorization", "Bearer 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")
+                .header("Authorization", "Bearer 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")
                 .header("Accept", "application/vnd.github+json")
                 .and()
                 .body(bodyParams)
