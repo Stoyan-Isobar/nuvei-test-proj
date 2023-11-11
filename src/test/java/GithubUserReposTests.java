@@ -67,7 +67,7 @@ public class GithubUserReposTests {
     private Response getResponse(Map bodyParams, String requestPath) {
 
         return given()
-                .header("Authorization", "Bearer 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")
+                .header("Authorization", "Bearer someToken")
                 .header("Accept", "application/vnd.github+json")
                 .and()
                 .body(bodyParams)
