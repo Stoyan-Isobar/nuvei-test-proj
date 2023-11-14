@@ -1,54 +1,93 @@
 import io.restassured.RestAssured;
 import io.restassured.response.Response;
-import org.apache.commons.lang3.StringUtils;
+import io.restassured.module.jsv.JsonSchemaValidator;
+import io.restassured.path.json.JsonPath;
+import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
+import java.io.File;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 
+import static io.restassured.RestAssured.form;
 import static io.restassured.RestAssured.given;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class GithubUserReposTests {
 
-//    private static final String REQUEST_BODY = """
-//            {
-//                "name": "test_repo_3",
-//                "description": "Creating an example repo"
-//            }""";
-    private static final int STATUS_CODE_CREATED = 201;
-    private static final int UNPROCESSABLE_CONTENT = 422;
-    private static final String REQUEST_PATH = "/user/repos";
+    private static final String GITHUB_USER = "Stoyan_Isobar";
+    private static final String BASE_URI = "https://api.github.com";
+    //private static final String DELETE_REQUEST_PATH ="/repos/";
+    private static final String POST_REQUEST_PATH = "/user/repos";
+    private static final String BEARER_TOKEN = "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";
+    private static final int SC_CREATED = 201;
+    private static final int SC_NO_CONTENT = 204;
+    private static final int SC_UNPROCESSABLE_CONTENT = 422;
+
+
 
     private static String uuid;
 
     @BeforeAll
     public static void setup() {
-        RestAssured.baseURI = "https://api.github.com";
+        RestAssured.baseURI = BASE_URI;
         uuid = generateGUID();
     }
 
     @Test
-    public void postBody1() {
+    public void givenMandatoryKeys_whenPost_thenCheckStatusCodeAndResponseBody() {
         Map<String, String> map = new HashMap<>() {
             {
                 put("name", String.format("test_repo_%s", uuid));
                 put("description", "Creating an example repo");
-                put("homepage", "https://github.com");
             }
         };
 
-        Response response = getResponse(map, REQUEST_PATH);
+        Response response = getResponse(map, POST_REQUEST_PATH);
 
+        //print the request to check the logs for errors
+        System.out.println(map);
 
-        System.out.println(convertMapToString(map));
-        Assertions.assertEquals(STATUS_CODE_CREATED, response.statusCode());
+        // Assertions for response status code
+        Assertions.assertEquals(SC_CREATED, response.statusCode());
+
+        // Assertions for "name" and "description" fields in the response body
+        String responseBody = response.getBody().asString();
+        assertTrue(responseBody.contains("\"name\":\"" + map.get("name") + "\""));
+        assertTrue(responseBody.contains("\"description\":\"" + map.get("description") + "\""));
+
+        // Assertions for some expected response keys according to the response contract
+        assertTrue(responseBody.contains("\"id\":"));
+        assertTrue(responseBody.contains("\"node_id\":"));
+        assertTrue(responseBody.contains("\"full_name\":"));
+
+        // Assertions for the "owner" object in the response body
+        assertTrue(responseBody.contains("\"owner\":"));
+
+        // Assertions for keys in the "owner" object
+        assertNotNull(JsonPath.from(responseBody).get("owner.login"));
+        assertNotNull(JsonPath.from(responseBody).get("owner.id"));
+        assertNotNull(JsonPath.from(responseBody).get("owner.node_id"));
+        assertNotNull(JsonPath.from(responseBody).get("owner.url"));
+
+        // whole JSON schema validation
+        ClassLoader classLoader = getClass().getClassLoader();
+        File jsonSchemaFile = new File(classLoader.getResource("new_github_repo.json").getFile());
+        assertTrue(validateJsonSchema(responseBody, jsonSchemaFile));
     }
-
     @Test
-    public void postBody2() {
+    public void givenMandatoryKeys_whenPost_thenCheckSchema () {
+
+    }
+    @Test
+    //As integrated system
+    //In order to provide expected errors to clients
+    //I want to receive status code and error/info msg about idempotency issues
+    public void givenNameAlreadyCreated_whenPost_thenCheckStatusCodeAndErrorMSG() {
         Map<String, String> map = new HashMap<>() {
             {
                 put("name", String.format("test_repo_%s", uuid));
@@ -57,17 +96,33 @@ public class GithubUserReposTests {
             }
         };
 
-        Response response = getResponse(map, REQUEST_PATH);
+        Response response = getResponse(map, POST_REQUEST_PATH);
 
 
-        System.out.println(convertMapToString(map));
-        Assertions.assertEquals(UNPROCESSABLE_CONTENT, response.statusCode());
+        System.out.println(map);
+        Assertions.assertEquals(SC_UNPROCESSABLE_CONTENT, response.statusCode());
+
     }
 
+    @AfterAll
+    public static void cleanup () {
+        String repoName = "test_repo_" + uuid;
+        String deleteRepoEndpoint = String.format("/repos/%s/%s", GITHUB_USER, repoName);
+
+        Response response = given()
+                .header("Authorization", "Bearer " + BEARER_TOKEN)
+                .header("Accept", "application/vnd.github+json")
+                .when()
+                .delete(deleteRepoEndpoint);
+
+        // Print the response to check for error message in case the delete request failed
+        System.out.println(response.getBody().asString());
+        Assertions.assertEquals(SC_NO_CONTENT, response.statusCode());
+    }
     private Response getResponse(Map bodyParams, String requestPath) {
 
         return given()
-                .header("Authorization", "Bearer someToken")
+                .header("Authorization", "Bearer " + BEARER_TOKEN)
                 .header("Accept", "application/vnd.github+json")
                 .and()
                 .body(bodyParams)
@@ -76,38 +131,12 @@ public class GithubUserReposTests {
                 .then()
                 .extract().response();
     }
-
-
-//    private static String generateRequestBody(boolean hasName, Map<String, String> params) {
-//        // Ensure the "name" parameter exists and starts with "test_repo_"; append a GUID if needed
-//
-//        if (hasName) {
-//            String name = "test_repo_" + generateGUID();
-//
-//            // Check when duplicated
-//            params.put("name", name);
-//        }
-//
-//        // Convert the Map to a JSON-like string format
-//        StringBuilder requestBody = new StringBuilder("{");
-//        for (Map.Entry<String, String> entry : params.entrySet()) {
-//            requestBody.append("\"").append(entry.getKey()).append("\":\"").append(entry.getValue()).append("\",");
-//        }
-//        // Remove the trailing comma if there are parameters
-//        if (requestBody.charAt(requestBody.length() - 1) == ',') {
-//            requestBody.setLength(requestBody.length() - 1);
-//        }
-//        requestBody.append("}");
-//
-//        return requestBody.toString();
-//    }
-
+    private boolean validateJsonSchema(String responseBody, File jsonSchemaFile) {
+        return JsonSchemaValidator.matchesJsonSchema(jsonSchemaFile).matches(responseBody);
+    }
     private static String generateGUID() {
         // Generate a random GUID (UUID)
         return UUID.randomUUID().toString();
     }
 
-    private String convertMapToString(Map map) {
-        return StringUtils.join(map);
-    }
 }
