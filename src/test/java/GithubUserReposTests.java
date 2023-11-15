@@ -19,11 +19,11 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class GithubUserReposTests {
 
-    private static final String GITHUB_USER = "Stoyan_Isobar";
+    private static final String GITHUB_USER = "Stoyan-Isobar";
     private static final String BASE_URI = "https://api.github.com";
     //private static final String DELETE_REQUEST_PATH ="/repos/";
     private static final String POST_REQUEST_PATH = "/user/repos";
-    private static final String BEARER_TOKEN = "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";
+    private static final String BEARER_TOKEN = "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";
     private static final int SC_CREATED = 201;
     private static final int SC_NO_CONTENT = 204;
     private static final int SC_UNPROCESSABLE_CONTENT = 422;
