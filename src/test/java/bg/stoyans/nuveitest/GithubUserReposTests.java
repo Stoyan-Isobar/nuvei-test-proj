@@ -63,6 +63,8 @@ public class GithubUserReposTests {
 
         // whole JSON schema validation
         ClassLoader classLoader = getClass().getClassLoader();
+
+        //TODO: check if resource is not null before getting the file, else call an error that the file is missing
         File jsonSchemaFile = new File(classLoader.getResource("schemas/new_github_repo.json").getFile());
         assertTrue(TestsHelper.validateJsonSchema(responseBody, jsonSchemaFile));
 
@@ -158,13 +160,14 @@ public class GithubUserReposTests {
     public void givenNameKeySeveralTimes_whenPost_thenOnlyApplyLastKeyValue() {
         //we use 'magic' name for the repo so that we can clean it up later on
         String requestBody = String.format(
-                "{\n" +
-                        "    \"name\": \"test2_repo2_%1$s\",\n" +
-                        "    \"name\": \"test2_repo_%1$s\",\n" +
-                        "    \"test\": \"test2_repo_%1$s\",\n" +
-                        "    \"description\": \"Creating an example repo\",\n" +
-                        "    \"homepage\": \"https://github.com\"\n" +
-                        "}",
+                """
+                        {
+                            "name": "test2_repo2_%1$s",
+                            "name": "test2_repo_%1$s",
+                            "test": "test2_repo_%1$s",
+                            "description": "Creating an example repo",
+                            "homepage": "https://github.com"
+                        }""",
                 uuid
         );
 
