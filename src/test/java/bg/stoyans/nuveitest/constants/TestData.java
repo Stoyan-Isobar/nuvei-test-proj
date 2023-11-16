@@ -24,5 +24,4 @@ public class TestData {
             put("homepage", "https://github.com");
         }
     };
-
 }
