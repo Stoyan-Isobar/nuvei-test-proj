@@ -1,4 +1,4 @@
-package com.stoyans.nuveitest.constants;
+package bg.stoyans.nuveitest.constants;
 
 public class StatusCodes {
     public static final int CREATED = 201;

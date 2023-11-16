@@ -1,25 +1,22 @@
-package com.stoyans.nuveitest;
+package bg.stoyans.nuveitest;
 
-import com.stoyans.nuveitest.constants.RequestAttributes;
-import com.stoyans.nuveitest.constants.StatusCodes;
-import com.stoyans.nuveitest.constants.TestData;
-import com.stoyans.nuveitest.utils.TestsHelper;
+import bg.stoyans.nuveitest.utils.TestsHelper;
+import bg.stoyans.nuveitest.constants.RequestAttributes;
+import bg.stoyans.nuveitest.constants.StatusCodes;
+import bg.stoyans.nuveitest.constants.TestData;
 import io.restassured.RestAssured;
-import io.restassured.response.Response;
 import io.restassured.path.json.JsonPath;
-import org.junit.jupiter.api.AfterAll;
-import org.junit.jupiter.api.Assertions;
-import org.junit.jupiter.api.BeforeAll;
-import org.junit.jupiter.api.Test;
+import io.restassured.response.Response;
+import org.junit.jupiter.api.*;
 
 import java.io.File;
-import java.util.HashMap;
 import java.util.Map;
 
-import static io.restassured.RestAssured.form;
 import static io.restassured.RestAssured.given;
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
+@TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 public class GithubUserReposTests {
 
     private static String uuid;
@@ -31,8 +28,9 @@ public class GithubUserReposTests {
     }
 
     @Test
+    @Order(1)
     public void givenMandatoryKeysOkAuth_whenPost_thenCheckStatusCodeAndResponseBody() {
-
+        //create request and change the name so that we are sure a repo with that name is not already present in the system under test
         Map<String, String> requestBody = TestsHelper.changeNameKeyInBody(uuid, TestData.REQUEST_BODY_HAPPY_PATH);
         Response response = TestsHelper.getResponse(requestBody, RequestAttributes.POST_REQUEST_PATH, RequestAttributes.BEARER_TOKEN);
 
@@ -44,7 +42,9 @@ public class GithubUserReposTests {
 
         //Assertions for "name" and "description" fields in the response body
         String responseBody = response.getBody().asString();
-        assertTrue(responseBody.contains("\"name\":\"" + requestBody.get("name") + "\""));
+        String expectedName = String.format("test_repo_%s", uuid);
+
+        assertTrue(responseBody.contains("\"name\":\"" + expectedName + "\""));
         assertTrue(responseBody.contains("\"description\":\"" + requestBody.get("description") + "\""));
 
         //assertions for some expected response keys according to the response contract
@@ -65,19 +65,20 @@ public class GithubUserReposTests {
         ClassLoader classLoader = getClass().getClassLoader();
         File jsonSchemaFile = new File(classLoader.getResource("schemas/new_github_repo.json").getFile());
         assertTrue(TestsHelper.validateJsonSchema(responseBody, jsonSchemaFile));
+
+        //delete created repo if status code = created
+        TestsHelper.sendDeleteRequest(expectedName);
     }
+
     @Test
-    public void givenWrongAuth_whenPost_thenCheckError () {
-        Map<String, String> map = new HashMap<>() {
-            {
-                put("name", String.format("test_repo_%s", uuid));
-                put("description", "Creating an example repo");
-            }
-        };
-        Response response = TestsHelper.getResponse(map, RequestAttributes.POST_REQUEST_PATH, RequestAttributes.INCORRECT_BEARER_TOKEN);
+    @Order(2)
+    public void givenWrongAuth_whenPost_thenCheckError() {
+        //use the same value for name as in test 1 as it doesn't affect the test
+        Map<String, String> requestBody = TestsHelper.changeNameKeyInBody(uuid, TestData.REQUEST_BODY_HAPPY_PATH);
+        Response response = TestsHelper.getResponse(requestBody, RequestAttributes.POST_REQUEST_PATH, RequestAttributes.INCORRECT_BEARER_TOKEN);
 
         //print the request to check the logs for errors
-        System.out.println(map);
+        System.out.println(requestBody);
 
         // Assertion for response status code
         Assertions.assertEquals(StatusCodes.UNAUTORIZED, response.statusCode());
@@ -88,22 +89,27 @@ public class GithubUserReposTests {
         File jsonSchemaFile = new File(classLoader.getResource("schemas/bad_credentials.json").getFile());
         assertTrue(TestsHelper.validateJsonSchema(responseBody, jsonSchemaFile));
     }
+
     @Test
+    @Order(3)
     //As integrated system
     //In order to provide expected errors to clients
     //I want to receive status code and error/info msg about idempotency issues
     public void givenNameAlreadyCreated_whenPost_thenCheckStatusCodeAndErrorMSG() {
-        Map<String, String> map = new HashMap<>() {
-            {
-                put("name", String.format("test_repo_%s", uuid));
-                put("description", "Creating an example repo");
-                put("homepage", "https://github.com");
-            }
-        };
+        //use the same value for name as in test1 as this is the test data we need to check idempotency handling
+        Map<String, String> requestBody = TestsHelper.changeNameKeyInBody(uuid, TestData.REQUEST_BODY_IDEMPOTENCY1);
+        Response testSetupResponse = TestsHelper.getResponse(requestBody, RequestAttributes.POST_REQUEST_PATH, RequestAttributes.BEARER_TOKEN);
 
-        Response response = TestsHelper.getResponse(map, RequestAttributes.POST_REQUEST_PATH, RequestAttributes.BEARER_TOKEN);
+        System.out.println(requestBody);
+        Assertions.assertEquals(StatusCodes.CREATED, testSetupResponse.statusCode());
 
-        System.out.println(map);
+        String expectedName = String.format("test_repo_%s", uuid);
+        String testSetupResponseBody = testSetupResponse.getBody().asString();
+        assertTrue(testSetupResponseBody.contains("\"name\":\"" + expectedName + "\""));
+
+        Response response = TestsHelper.getResponse(requestBody, RequestAttributes.POST_REQUEST_PATH, RequestAttributes.BEARER_TOKEN);
+
+        System.out.println(requestBody);
         Assertions.assertEquals(StatusCodes.UNPROCESSABLE_CONTENT, response.statusCode());
 
         // schema validation
@@ -111,25 +117,26 @@ public class GithubUserReposTests {
         ClassLoader classLoader = getClass().getClassLoader();
         File jsonSchemaFile = new File(classLoader.getResource("schemas/idempotency.json").getFile());
         assertTrue(TestsHelper.validateJsonSchema(responseBody, jsonSchemaFile));
+
+        //delete created repo if status code = created
+        TestsHelper.sendDeleteRequest(expectedName);
     }
+
     @Test
+    @Order(4)
     //As owner of create_repo API
     //In order to provide safe usage of special symbols
     //I want to validate for and substitute special symbols
-    public void givenSpecialSymbolsInName_whenPost_thenCheckNameKeyValue(){
-        Map<String, String> map = new HashMap<>() {
-            {
-                put("name", String.format("OR 1=1_%s", uuid));
-                put("description", "Creating an example repo");
-                put("homepage", "https://github.com");
-            }
-        };
+    public void givenSpecialSymbolsInName_whenPost_thenCheckNameKeyValue() {
+        //build a body with name value including special symbols
+        Map<String, String> requestBody = TestsHelper.changeNameKeyInBody(uuid, TestData.REQUEST_BODY_SQL_INJ);
 
+        //set expected results based on expectations for system behavior
         String expectedName = String.format("OR-1-1_%s", uuid);
-        Response response = TestsHelper.getResponse(map, RequestAttributes.POST_REQUEST_PATH, RequestAttributes.BEARER_TOKEN);
+        Response response = TestsHelper.getResponse(requestBody, RequestAttributes.POST_REQUEST_PATH, RequestAttributes.BEARER_TOKEN);
 
         // print the request to check the logs for errors
-        System.out.println(map);
+        System.out.println(requestBody);
 
         // assertion for response status code
         Assertions.assertEquals(StatusCodes.CREATED, response.statusCode());
@@ -137,30 +144,45 @@ public class GithubUserReposTests {
         //Assertions for "name" and "description" fields in the response body
         String responseBody = response.getBody().asString();
         assertTrue(responseBody.contains("\"name\":\"" + expectedName + "\""));
+
+        //delete created repo if status code = created
+        TestsHelper.sendDeleteRequest(expectedName);
     }
 
     @Test
+    @Order(5)
     //As architect of create_repo API
     //In order to apply to "decoupled collaboration"
     //I want to read only the keys that are specified in the contract, if same key is passed - read the last one
 
-    public void givenNameKeySeveralTimes_whenPost_thenOnlyApplyLastKeyValue(){
-        Map<String, String> map = new HashMap<>() {
-            {
-                put("name", String.format("test_repo1_%s", uuid));
-                put("name", String.format("test_repo2_%s", uuid));
-                put("test", String.format("test_repo3_%s", uuid));
-                put("OR 1=1", "test");
-                put("description", "Creating an example repo");
-                put("homepage", "https://github.com");
-            }
-        };
+    public void givenNameKeySeveralTimes_whenPost_thenOnlyApplyLastKeyValue() {
+        //we use 'magic' name for the repo so that we can clean it up later on
+        String requestBody = String.format(
+                "{\n" +
+                        "    \"name\": \"test2_repo2_%1$s\",\n" +
+                        "    \"name\": \"test2_repo_%1$s\",\n" +
+                        "    \"test\": \"test2_repo_%1$s\",\n" +
+                        "    \"description\": \"Creating an example repo\",\n" +
+                        "    \"homepage\": \"https://github.com\"\n" +
+                        "}",
+                uuid
+        );
 
-        String expectedName = String.format("test_repo2_%s", uuid);
-        Response response = TestsHelper.getResponse(map, RequestAttributes.POST_REQUEST_PATH, RequestAttributes.BEARER_TOKEN);
+        Response response = given()
+                .header("Authorization", "Bearer " + RequestAttributes.BEARER_TOKEN)
+                .header("Accept", "application/vnd.github+json")
+                .and()
+                .body(requestBody)
+                .when()
+                .post(RequestAttributes.POST_REQUEST_PATH)
+                .then()
+                .extract().response();
+
+        String expectedName = String.format("test2_repo_%s", uuid);
+//        Response response = TestsHelper.getResponse(requestBody, RequestAttributes.POST_REQUEST_PATH, RequestAttributes.BEARER_TOKEN);
 
         // print the request to check the logs for errors
-        System.out.println(map);
+        System.out.println(requestBody);
 
         // assertion for response status code
         Assertions.assertEquals(StatusCodes.CREATED, response.statusCode());
@@ -168,22 +190,9 @@ public class GithubUserReposTests {
         //Assertions for "name" and "description" fields in the response body
         String responseBody = response.getBody().asString();
         assertTrue(responseBody.contains("\"name\":\"" + expectedName + "\""));
+
+        //delete created repo if status code = created
+        TestsHelper.sendDeleteRequest(expectedName);
     }
-    @AfterAll
-    public static void cleanup () {
-        String repoName = "test_repo_" + uuid;
-        String deleteRepoEndpoint = String.format("/repos/%s/%s", RequestAttributes.GITHUB_USER, repoName);
-
-        Response response = given()
-                .header("Authorization", "Bearer " + RequestAttributes.BEARER_TOKEN)
-                .header("Accept", "application/vnd.github+json")
-                .when()
-                .delete(deleteRepoEndpoint);
-
-        // Print the response to check for error message in case the delete request failed
-        System.out.println(response.getBody().asString());
-        Assertions.assertEquals(StatusCodes.NO_CONTENT, response.statusCode());
-    }
-
 
 }
